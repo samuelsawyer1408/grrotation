@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Grand Race Clock for The Crew Motorfest</title>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Work+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#e8f0f1;--card:#fff;--ink:#0e2a33;--mute:#4d6a73;--line:#c3d4d8;--sea:#0b7285;--sun:#c2570a;color-scheme:light;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b1d23;--card:#12303a;--ink:#e6f2f4;--mute:#8fb0b8;--line:#24505c;--sea:#4cc3d9;--sun:#ffa94d;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0b1d23;--card:#12303a;--ink:#e6f2f4;--mute:#8fb0b8;--line:#24505c;--sea:#4cc3d9;--sun:#ffa94d;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.5 "Work Sans",system-ui,sans-serif}
+main{max-width:760px;margin:0 auto;padding:20px 16px 48px}
+h1{font:900 clamp(1.4rem,5vw,1.9rem)/1.1 "Big Shoulders Display",Impact,sans-serif;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 20px;font-size:.92rem}
+.bar{display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+select,button,textarea,input{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+button{cursor:pointer;border-color:var(--sea)}
+:focus-visible{outline:3px solid var(--sea);outline-offset:2px}
+.hero{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px;margin-bottom:16px}
+.clock{font:900 clamp(4rem,22vw,8rem)/.9 "Big Shoulders Display",Impact,sans-serif;font-variant-numeric:tabular-nums;color:var(--sea);margin:0}
+.meter{height:10px;background:var(--line);border-radius:5px;overflow:hidden;margin:14px 0 6px}
+.meter i{display:block;height:100%;width:0;background:var(--sun)}
+.row2{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.mute{color:var(--mute)}
+.now{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.banner{border:1px solid var(--line);border-left:6px solid var(--mute);border-radius:6px;padding:10px 14px;margin-bottom:16px;background:var(--card)}
+.banner.on{border-left-color:var(--sun)}
+h2{font:700 1.3rem/1.2 "Big Shoulders Display",Impact,sans-serif;margin:24px 0 8px}
+ol{list-style:none;margin:0;padding:0}
+li{display:grid;grid-template-columns:5.5rem 1fr;gap:8px;padding:10px 12px;background:var(--card);border:1px solid var(--line);border-top-width:0;font-variant-numeric:tabular-nums}
+li:first-child{border-top-width:1px;border-radius:8px 8px 0 0}
+li:last-child{border-radius:0 0 8px 8px}
+li.blk{border-left:5px solid var(--sea)}
+li span.t{font-weight:600}
+.tag{color:var(--sea);font-size:.85rem;display:block}
+.chip{display:inline-block;border:1px solid var(--sea);border-radius:14px;padding:2px 10px;margin:4px 6px 2px 0;font-size:.95rem}
+.mm{margin-top:4px}
+</style>
+</head>
+<body>
+<main>
+<h1>Grand Race Clock</h1>
+<p class="sub">Live race timer and the repeating 54-race rotation for The Crew Motorfest.</p>
+<div class="bar">
+  <label for="tz" style="margin:0">Show times in</label>
+  <select id="tz"><option value="auto">Device time (auto)</option><option value="Asia/Kolkata">India (IST)</option><option value="UTC">UTC / GMT</option><option value="Asia/Dubai">Dubai</option><option value="Asia/Singapore">Singapore</option><option value="Europe/London">London</option><option value="America/New_York">New York</option><option value="America/Los_Angeles">Los Angeles</option><option value="Australia/Sydney">Sydney</option></select>
+</div>
+
+<section class="hero" aria-live="off">
+  <div class="mute">In-game timer: next race starts in</div>
+  <p class="clock" id="toNext">--:--</p>
+  <div class="meter"><i id="fill"></i></div>
+  <div class="row2"><span>Real time <b id="irl">--</b></span><span>Race started <b id="slot">--</b></span><span>Now racing <b id="race">--</b></span></div>
+  <div class="row2 mute" style="margin-top:4px"><span>Rotation restarts in <b id="toCycle">--</b></span></div>
+  <div class="now"><span class="mute">Car class</span><div id="cls"></div></div>
+  <div class="now"><span class="mute">Modifiers</span><div id="mods"></div></div>
+</section>
+
+<div class="banner" id="sat"></div>
+
+<h2>Coming up</h2>
+<ol id="list"></ol>
+
+</main>
+<script>
+const SLOT=600000,$=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const tz=()=>$("#tz").value==="auto"?undefined:$("#tz").value;
+const fmt=ms=>new Intl.DateTimeFormat(undefined,{hour:"numeric",minute:"2-digit",timeZone:tz()}).format(ms);
+const zone=ms=>tz()==="Asia/Kolkata"?"IST":new Intl.DateTimeFormat(undefined,{timeZoneName:"short",timeZone:tz()}).formatToParts(ms).find(p=>p.type==="timeZoneName").value;
+const mmss=ms=>{const t=Math.max(0,Math.ceil(ms/1000));return String(Math.floor(t/60)).padStart(2,"0")+":"+String(t%60).padStart(2,"0")};
+const hms=ms=>{const t=Math.max(0,Math.floor(ms/1000)),h=Math.floor(t/3600),m=Math.floor(t%3600/60);return h?h+"h "+m+"m":m+"m "+t%60+"s"};
+function parse(t){const sp=s=>(s||"").split(",").map(x=>x.trim()).filter(Boolean);return t.split("\n").map(l=>l.trim()).filter(Boolean).map(l=>{const a=l.split("|");return{classes:sp(a[0]),modifiers:sp(a[1])}})}
+
+const DEF_TEXT=`Rally, Rally Raid, Racing
+Hypercar, Alpha GP, Racing | SPECIAL WEATHER
+Monster, Street Tier 2, Hypercar
+Street Tier 1, Alpha GP, Racing | NO COLLISION
+Alpha GP, Drift, Rally
+Rally, Motocross, Rally
+Street Tier 2, Racing, Hypercar | UK
+Rally Raid, Hypercar, Rally
+Racing, Street Tier 2, Racing | PRO RACING
+Street Tier 1, Street Tier 2, Rally Raid
+Rally Raid, Rally Raid, Alpha GP | RC
+Racing, Alpha GP, Hypercar | NO COLLISION
+Hypercar, Hypercar, Hypercar
+Street Tier 1, Street Tier 2, Racing | FORD
+Alpha GP, Rally Raid, Hypercar
+Racing, Rally, Street Tier 2
+Hypercar, Jet, Alpha GP | AIR ONLY SECTION
+Street Tier 1, Monster, Hypercar
+Street Tier 1, Hypercar, Racing | NO COLLISION
+Street Tier 2, Rally Raid, Motocross
+Rally, Alpha GP, Rally Raid
+Street Tier 2, Drift, Hypercar | SUPERCAR
+Alpha GP, Racing, Rally
+Hypercar, Street Tier 2, Racing | FERRARI
+Motocross, Hypercar, Alpha GP
+Street Tier 2, Rally, Rally
+Street Tier 1, Racing, Hypercar | NO COLLISION
+Rally Raid, Rally Raid, Rally Raid | RC
+Hypercar, Street Tier 2, Racing | SPECIAL WEATHER
+Rally Raid, Rally, Street Tier 2
+Alpha GP, Racing, Hypercar | PRO RACING
+Street Tier 2, Rally Raid, Racing
+Rally Raid, Hypercar, Drift | NO COLLISION
+Street Tier 2, Racing, Hypercar
+Racing, Jet, Street Tier 2 | AIR ONLY SECTION
+Street Tier 1, Street Tier 1, Street Tier 1 | RC
+Alpha GP, Rally, Hypercar
+Hypercar, Racing, Street Tier 2 | JAPANESE
+Drift, Alpha GP, Rally Raid
+Street Tier 2, Hypercar, Alpha GP
+Street Tier 1, Street Tier 2, Racing | PRO RACING
+Street Tier 1, Motocross, Hypercar
+Racing, Street Tier 2, Alpha GP | NO COLLISION
+Hypercar, Monster, Rally
+Rally, Rally Raid, Rally Raid | RC
+Street Tier 1, Hypercar, Street Tier 2 | CHEVROLET
+Street Tier 1, Rally Raid, Hypercar
+Racing, Jet, Street Tier 2 | AIR ONLY SECTION
+Hypercar, Rally, Drift
+Street Tier 1, Rally Raid, Street Tier 2
+Street Tier 2, Alpha GP, Racing | NO COLLISION
+Racing, Rally Raid, Hypercar
+Street Tier 2, Hypercar, Alpha GP | SPORT
+Street Tier 2, Racing, Motocross`;
+const DEF_ANCHOR=Date.UTC(2026,9,19,21,0,0);
+let cyc={anchor:DEF_ANCHOR,text:DEF_TEXT,races:parse(DEF_TEXT)};
+try{const z=localStorage.getItem("gr-tz");if(z){$("#tz").value=z;if($("#tz").value!==z)$("#tz").value="auto"}}catch(e){}
+
+const N=()=>cyc.races.length;
+const ready=()=>N()>0&&cyc.anchor!=null;
+const slotStart=ms=>ready()?cyc.anchor+Math.floor((ms-cyc.anchor)/SLOT)*SLOT:Math.floor(ms/SLOT)*SLOT;
+const idx=ms=>{if(!ready())return -1;const n=N();return((Math.floor((ms-cyc.anchor)/SLOT)%n)+n)%n};
+const info=ms=>{const i=idx(ms);return i<0?{}:cyc.races[i]};
+function satWindow(now){const d=new Date(now);let st=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),9)-((d.getUTCDay()-6+7)%7)*864e5;if(now<st)st-=7*864e5;return st}
+const isSat=ms=>ms<satWindow(ms)+864e5;
+const arr=v=>(v||[]).filter(Boolean).map(esc);
+const chips=a=>a.map(x=>'<span class="chip">'+x+"</span>").join("");
+function classes(i){const c=arr(i.classes);return c.length?chips(c):'<span class="mute">Rotation not set up yet</span>'}
+function mods(i,ms){const m=arr(i.modifiers);if(isSat(ms))m.push("Saturday all-day modifier");return m.length?chips(m):'<span class="mute">None</span>'}
+function detail(i,ms){return "<div>"+classes(i)+'</div><div class="mm"><span class="mute">Modifiers:</span> '+mods(i,ms)+"</div>"}
+
+let lastSlot=0;
+function tick(){
+  const now=Date.now(),s=slotStart(now),i=idx(s),n=N();
+  $("#irl").textContent=new Intl.DateTimeFormat(undefined,{hour:"numeric",minute:"2-digit",second:"2-digit",timeZone:tz()}).format(now)+" "+zone(now);
+  $("#slot").textContent=fmt(s);
+  $("#fill").style.width=((now-s)/SLOT*100)+"%";
+  $("#toNext").textContent=mmss(s+SLOT-now);
+  $("#race").textContent=i<0?"not set up":"race "+(i+1)+" of "+n;
+  $("#toCycle").textContent=i<0?"--":hms(s+SLOT-now+(n-1-i)*SLOT);
+  $("#cls").innerHTML=classes(info(s));
+  $("#mods").innerHTML=mods(info(s),s);
+  const st=satWindow(now),en=st+864e5,on=now<en,ban=$("#sat");
+  ban.className="banner"+(on?" on":"");
+  ban.textContent=on?"Saturday all-day modifier is active for another "+hms(en-now)+".":"Next Saturday all-day modifier starts in "+hms(st+7*864e5-now)+" (09:00 UTC).";
+  if(s!==lastSlot){
+    lastSlot=s;let h="";
+    for(let k=1;k<=9;k++){
+      const x=s+k*SLOT,j=idx(x);
+      h+='<li class="'+(j===0?"blk":"")+'"><span class="t">'+esc(fmt(x))+'</span><span class="d">'+(j>=0?'<span class="tag">Race '+(j+1)+(j===0?" (rotation restarts)":"")+"</span>":"")+detail(info(x),x)+"</span></li>";
+    }
+    $("#list").innerHTML=h;
+  }
+}
+$("#tz").addEventListener("change",()=>{try{localStorage.setItem("gr-tz",$("#tz").value)}catch(e){}lastSlot=0;tick()});
+tick();setInterval(tick,1000);
+</script>
+</body>
+</html>
